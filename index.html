@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SC3 Indoor Navigation System</title>
+    
+    <!-- [โหลด Tailwind CSS] -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Prompt', sans-serif; }
+        .map-wrapper { position: relative; display: block; width: 100%; height: auto; background-color: #f8fafc; border-radius: 0.75rem; overflow: hidden; border: 1px solid #e2e8f0; }
+        .map-bg { width: 100%; height: auto; object-fit: contain; opacity: 0.9; }
+        
+        .map-marker { position: absolute; width: 12px; height: 12px; background-color: #3b82f6; border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); z-index: 20; box-shadow: 0 2px 6px rgba(0,0,0,0.3); animation: pulse 2s infinite; }
+        .map-marker.destination { background-color: #22c55e; width: 12px; height: 12px; }
+        .map-marker.transit { background-color: #f59e0b; width: 10px; height: 10px; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+
+    /* === สไตล์แบบประเมิน === */
+    .eval-trigger-btn { background-color: #ff6b00; color: white; border: none; padding: 8px 14px; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.2s; }
+    .eval-trigger-btn:hover { background-color: #e56000; }
+    .eval-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+    .eval-modal-content { background: #ffffff; padding: 25px 30px; width: 90%; max-width: 500px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; max-height: 90vh; overflow-y: auto; text-align: left; }
+    .eval-modal-content h2 { margin-top: 0; color: #333; font-size: 20px; font-weight: bold; }
+    .eval-subtitle { color: #666; font-size: 13px; margin-bottom: 15px; }
+    .eval-close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; font-weight: bold; color: #aaa; cursor: pointer; }
+    .eval-close-btn:hover { color: #000; }
+    .eval-section { margin-bottom: 18px; }
+    .eval-section h3 { font-size: 15px; color: #dc2626; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-bottom: 8px; font-weight: 600; }
+    .eval-section label { display: block; font-size: 13px; color: #444; margin-bottom: 6px; font-weight: bold; }
+    .rating-group { display: flex; flex-direction: column; gap: 6px; padding-left: 5px; }
+    .rating-group label { font-weight: normal; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .eval-submit-btn { background-color: #28a745; color: white; border: none; width: 100%; padding: 10px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+    .eval-submit-btn:hover { background-color: #218838; }
+
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- [ส่วนหัว Header] -->
+    <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <span class="text-3xl">🏫</span>
+                <div>
+                    <h1 class="text-xl font-bold text-red-600">SC3 Indoor Navigation</h1>
+                    <p class="text-xs text-slate-500">ระบบปักหมุดนำทางภายในอาคารเรียนรวมสังคมศาสตร์ 3 (มธ. ศูนย์รังสิต)</p>
+                </div>
+            </div>
+            <!-- [ปุ่มเปิดแบบประเมิน] -->
+            <button id="openEvalBtn" class="eval-trigger-btn">📋 แบบประเมิน</button>
+        </div>
+    </header>
+
+    <!-- [ส่วนเนื้อหาหลัก Main Content] -->
+    <main class="max-w-5xl mx-auto px-4 py-8 flex-grow w-full grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <!-- [กล่องซ้าย: ฟอร์มตั้งค่าค้นหาเส้นทาง] -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit md:col-span-1">
+            <h2 class="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                <span>📍</span> ตั้งค่าการค้นหาตำแหน่ง
+            </h2>
+            
+            <form id="navForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">จุดเริ่มต้น:</label>
+                    <select id="startRoom" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-red-500 focus:outline-none bg-white">
+<optgroup label="--- ชั้น 1 ---">
+<option value="106">ห้อง 106</option>
+<option value="110">ห้อง 110</option>
+<option value="111">ห้อง 111</option>
+<option value="112">ห้อง 112</option>
+<option value="113">ห้อง 113</option>
+<option value="114">ห้อง 114</option>
+<option value="115">ห้อง 115</option>
+<option value="116">ห้อง 116</option>
+<option value="118">ห้อง 118</option>
+<option value="119">ห้อง 119</option>
+<option value="120">ห้อง 120</option>
+<option value="123">ห้อง 123</option>
+<option value="124">ห้อง 124</option>
+<option value="ห้องละหมาด">ห้องละหมาด</option>
+<option value="Amazon">Amazon</option>
+<option value="Restroom_1">ห้องน้ำ 1 (ชั้น 1)</option>
+<option value="Restroom_2">ห้องน้ำ 2 (ชั้น 1)</option>
+<option value="Restroom_3">ห้องน้ำ 3 (ชั้น 1)</option>
+<option value="Restroom_4">ห้องน้ำ 4 (ชั้น 1)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น M ---">
+<option value="M04">ห้อง M04</option>
+<option value="M05">ห้อง M05</option>
+<option value="M06">ห้อง M06</option>
+<option value="M07">ห้อง M07</option>
+<option value="M08">ห้อง M08</option>
+<option value="M09">ห้อง M09</option>
+<option value="M10">ห้อง M10</option>
+<option value="M11">ห้อง M11</option>
+<option value="M12">ห้อง M12</option>
+<option value="M13">ห้อง M13</option>
+<option value="M14">ห้อง M14</option>
+<option value="M15">ห้อง M15</option>
+<option value="M16">ห้อง M16</option>
+<option value="M17">ห้อง M17</option>
+<option value="M18">ห้อง M18</option>
+<option value="M19">ห้อง M19</option>
+<option value="M20">ห้อง M20</option>
+<option value="Restroom_5">ห้องน้ำ 1 (ชั้น M)</option>
+<option value="Restroom_6">ห้องน้ำ 2 (ชั้น M)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น 2 ---">
+<option value="201">ห้อง 201</option>
+<option value="202">ห้อง 202</option>
+<option value="204">ห้อง 204</option>
+<option value="205">ห้อง 205</option>
+<option value="207">ห้อง 207</option>
+<option value="208">ห้อง 208</option>
+<option value="209">ห้อง 209</option>
+<option value="210">ห้อง 210</option>
+<option value="211">ห้อง 211</option>
+<option value="214">ห้อง 214</option>
+<option value="215">ห้อง 215</option>
+<option value="216">ห้อง 216</option>
+<option value="217">ห้อง 217</option>
+<option value="218">ห้อง 218</option>
+<option value="219">ห้อง 219</option>
+<option value="220">ห้อง 220</option>
+<option value="221">ห้อง 221</option>
+<option value="222">ห้อง 222</option>
+<option value="223">ห้อง 223</option>
+<option value="224">ห้อง 224</option>
+<option value="225">ห้อง 225</option>
+<option value="226">ห้อง 226</option>
+<option value="227">ห้อง 227</option>
+<option value="228">ห้อง 228</option>
+<option value="229">ห้อง 229</option>
+<option value="230">ห้อง 230</option>
+<option value="231">ห้อง 231</option>
+<option value="Restroom_7">ห้องน้ำ 1 (ชั้น 2)</option>
+<option value="Restroom_8">ห้องน้ำ 2 (ชั้น 2)</option>
+<option value="Restroom_9">ห้องน้ำ 3 (ชั้น 2)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น 3 ---">
+<option value="301">ห้อง 301</option>
+<option value="302">ห้อง 302</option>
+<option value="304">ห้อง 304</option>
+<option value="307">ห้อง 307</option>
+<option value="308">ห้อง 308</option>
+<option value="309">ห้อง 309</option>
+<option value="310">ห้อง 310</option>
+<option value="312">ห้อง 312</option>
+<option value="313">ห้อง 313</option>
+<option value="314">ห้อง 314</option>
+<option value="315">ห้อง 315</option>
+<option value="316">ห้อง 316</option>
+<option value="317">ห้อง 317</option>
+<option value="318">ห้อง 318</option>
+<option value="319">ห้อง 319</option>
+<option value="320">ห้อง 320</option>
+<option value="321">ห้อง 321</option>
+<option value="322">ห้อง 322</option>
+<option value="323">ห้อง 323</option>
+<option value="324">ห้อง 324</option>
+<option value="325">ห้อง 325</option>
+<option value="326">ห้อง 326</option>
+<option value="327">ห้อง 327</option>
+<option value="328">ห้อง 328</option>
+<option value="Restroom_10">ห้องน้ำ 1 (ชั้น 3)</option>
+<option value="Restroom_11">ห้องน้ำ 2 (ชั้น 3)</option>
+<option value="Restroom_12">ห้องน้ำ 3 (ชั้น 3)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น 4 ---">
+<option value="401">ห้อง 401</option>
+<option value="402">ห้อง 402</option>
+<option value="408">ห้อง 408</option>
+<option value="409">ห้อง 409</option>
+<option value="410">ห้อง 410</option>
+<option value="411">ห้อง 411</option>
+<option value="413">ห้อง 413</option>
+<option value="Student Lounge"> Student Lounge</option>
+<option value="TU AI Center"> TU AI Center</option>
+<option value="Restroom_13">ห้องน้ำ 1 (ชั้น 4)</option>
+<option value="Restroom_14">ห้องน้ำ 2 (ชั้น 4)</option>
+<option value="Restroom_15">ห้องน้ำ 3 (ชั้น 4)</option>
+</optgroup>
+</select>
+</div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">จุดหมายปลายทาง:</label>
+                    <select id="targetRoom" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-red-500 focus:outline-none bg-white">
+<optgroup label="--- ชั้น 1 ---">
+<option value="106">ห้อง 106</option>
+<option value="110">ห้อง 110</option>
+<option value="111">ห้อง 111</option>
+<option value="112">ห้อง 112</option>
+<option value="113">ห้อง 113</option>
+<option value="114">ห้อง 114</option>
+<option value="115">ห้อง 115</option>
+<option value="116">ห้อง 116</option>
+<option value="118">ห้อง 118</option>
+<option value="119">ห้อง 119</option>
+<option value="120">ห้อง 120</option>
+<option value="123">ห้อง 123</option>
+<option value="124">ห้อง 124</option>
+<option value="ห้องละหมาด">ห้องละหมาด</option>
+<option value="Amazon">Amazon</option>
+<option value="Restroom_1">ห้องน้ำ 1 (ชั้น 1)</option>
+<option value="Restroom_2">ห้องน้ำ 2 (ชั้น 1)</option>
+<option value="Restroom_3">ห้องน้ำ 3 (ชั้น 1)</option>
+<option value="Restroom_4">ห้องน้ำ 4 (ชั้น 1)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น M ---">
+<option value="M04">ห้อง M04</option>
+<option value="M05">ห้อง M05</option>
+<option value="M06">ห้อง M06</option>
+<option value="M07">ห้อง M07</option>
+<option value="M08">ห้อง M08</option>
+<option value="M09">ห้อง M09</option>
+<option value="M10">ห้อง M10</option>
+<option value="M11">ห้อง M11</option>
+<option value="M12">ห้อง M12</option>
+<option value="M13">ห้อง M13</option>
+<option value="M14">ห้อง M14</option>
+<option value="M15">ห้อง M15</option>
+<option value="M16">ห้อง M16</option>
+<option value="M17">ห้อง M17</option>
+<option value="M18">ห้อง M18</option>
+<option value="M19">ห้อง M19</option>
+<option value="M20">ห้อง M20</option>
+<option value="Restroom_5">ห้องน้ำ 1 (ชั้น M)</option>
+<option value="Restroom_6">ห้องน้ำ 2 (ชั้น M)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น 2 ---">
+<option value="201">ห้อง 201</option>
+<option value="202">ห้อง 202</option>
+<option value="204">ห้อง 204</option>
+<option value="205">ห้อง 205</option>
+<option value="207">ห้อง 207</option>
+<option value="208">ห้อง 208</option>
+<option value="209">ห้อง 209</option>
+<option value="210">ห้อง 210</option>
+<option value="211">ห้อง 211</option>
+<option value="214">ห้อง 214</option>
+<option value="215">ห้อง 215</option>
+<option value="216">ห้อง 216</option>
+<option value="217">ห้อง 217</option>
+<option value="218">ห้อง 218</option>
+<option value="219">ห้อง 219</option>
+<option value="220">ห้อง 220</option>
+<option value="221">ห้อง 221</option>
+<option value="222">ห้อง 222</option>
+<option value="223">ห้อง 223</option>
+<option value="224">ห้อง 224</option>
+<option value="225">ห้อง 225</option>
+<option value="226">ห้อง 226</option>
+<option value="227">ห้อง 227</option>
+<option value="228">ห้อง 228</option>
+<option value="229">ห้อง 229</option>
+<option value="230">ห้อง 230</option>
+<option value="231">ห้อง 231</option>
+<option value="Restroom_7">ห้องน้ำ 1 (ชั้น 2)</option>
+<option value="Restroom_8">ห้องน้ำ 2 (ชั้น 2)</option>
+<option value="Restroom_9">ห้องน้ำ 3 (ชั้น 2)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น 3 ---">
+<option value="301">ห้อง 301</option>
+<option value="302">ห้อง 302</option>
+<option value="304">ห้อง 304</option>
+<option value="307">ห้อง 307</option>
+<option value="308">ห้อง 308</option>
+<option value="309">ห้อง 309</option>
+<option value="310">ห้อง 310</option>
+<option value="312">ห้อง 312</option>
+<option value="313">ห้อง 313</option>
+<option value="314">ห้อง 314</option>
+<option value="315">ห้อง 315</option>
+<option value="316">ห้อง 316</option>
+<option value="317">ห้อง 317</option>
+<option value="318">ห้อง 318</option>
+<option value="319">ห้อง 319</option>
+<option value="320">ห้อง 320</option>
+<option value="321">ห้อง 321</option>
+<option value="322">ห้อง 322</option>
+<option value="323">ห้อง 323</option>
+<option value="324">ห้อง 324</option>
+<option value="325">ห้อง 325</option>
+<option value="326">ห้อง 326</option>
+<option value="327">ห้อง 327</option>
+<option value="328">ห้อง 328</option>
+<option value="Restroom_10">ห้องน้ำ 1 (ชั้น 3)</option>
+<option value="Restroom_11">ห้องน้ำ 2 (ชั้น 3)</option>
+<option value="Restroom_12">ห้องน้ำ 3 (ชั้น 3)</option>
+</optgroup>
+
+<optgroup label="--- ชั้น 4 ---">
+<option value="401">ห้อง 401</option>
+<option value="402">ห้อง 402</option>
+<option value="408">ห้อง 408</option>
+<option value="409">ห้อง 409</option>
+<option value="410">ห้อง 410</option>
+<option value="411">ห้อง 411</option>
+<option value="413">ห้อง 413</option>
+<option value="Student Lounge"> Student Lounge</option>
+<option value="TU AI Center"> TU AI Center</option>
+<option value="Restroom_13">ห้องน้ำ 1 (ชั้น 4)</option>
+<option value="Restroom_14">ห้องน้ำ 2 (ชั้น 4)</option>
+<option value="Restroom_15">ห้องน้ำ 3 (ชั้น 4)</option>
+</optgroup>
+</select>
+</div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-2">เงื่อนไขการเดินทางข้ามชั้น:</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="flex items-center justify-center p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition border-slate-300 has-[:checked]:border-red-500 has-[:checked]:bg-red-50/50">
+                            <input type="radio" name="travelOption" value="elevator" checked class="text-red-600 focus:ring-red-500 mr-2">
+                            <span class="text-sm font-medium">🛗 ลิฟต์</span>
+                        </label>
+                        <label class="flex items-center justify-center p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition border-slate-300 has-[:checked]:border-red-500 has-[:checked]:bg-red-50/50">
+                            <input type="radio" name="travelOption" value="stairs" class="text-red-600 focus:ring-red-500 mr-2">
+                            <span class="text-sm font-medium">🪜 บันได</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-xl shadow-lg shadow-red-600/20 transition duration-200 mt-2">
+                    🔍 แสดงตำแหน่งและขั้นตอน
+                </button>
+            </form>
+        </section>
+
+        <!-- [กล่องขวา: ผลลัพธ์และแผนผังปักหมุด] -->
+        <section class="md:col-span-2 space-y-6">
+            <div id="welcomeState" class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center py-16">
+                <div class="text-5xl mb-3">🗺️</div>
+                <h3 class="text-lg font-semibold text-slate-700">พร้อมแสดงตำแหน่ง</h3>
+                <p class="text-sm text-slate-500 mt-1">กรุณาเลือกจุดเริ่มต้น ปลายทาง และเงื่อนไขข้ามชั้นด้านซ้ายเพื่อดูแผนผังการปักหมุด</p>
+            </div>
+
+            <div id="resultState" class="hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                        <span>📋</span> ขั้นตอนคำแนะนำการเดิน
+                    </h3>
+                    <div id="stepsList" class="space-y-3"></div>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                        <span>🗺️</span> แผนผังแสดงตำแหน่ง (แยกตามชั้น)
+                    </h3>
+                    
+                    <div id="floorTabs" class="flex space-x-2 border-b border-slate-200 pb-3 mb-4"></div>
+                    <div id="mapContainer" class="map-wrapper flex items-center justify-center relative"></div>
+                    <p class="text-xs text-slate-400 mt-2 text-center">* หมุดสีฟ้า = จุดเริ่มต้น | หมุดสีส้ม = จุดเชื่อมต่อ (ลิฟต์/บันได) | หมุดสีเขียว = ปลายทาง</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- [ส่วนท้าย Footer] -->
+    <footer class="text-center py-6 text-xs text-slate-400 border-t border-slate-200 mt-auto">
+        SC3 Indoor Navigation System &copy; 2026 Thammasat University
+    </footer>
+
+    <!-- [หน้าต่าง Modal แบบประเมิน] -->
+    <div id="evalModal" class="eval-modal-overlay" style="display: none;">
+        <div class="eval-modal-content">
+            <span id="closeEvalBtn" class="eval-close-btn">&times;</span>
+            
+            <h2>แบบประเมินระบบนำทางอาคาร SC3</h2>
+            <p class="eval-subtitle">ความคิดเห็นของท่านมีประโยชน์อย่างยิ่งในการพัฒนาปรับปรุงระบบ</p>
+            
+            <form id="sc3EvalForm">
+
+                <!-- ส่วนข้อมูลผู้ตอบแบบสอบถาม -->
+                <div class="eval-section">
+                    <h3>ข้อมูลทั่วไปผู้ตอบแบบสอบถาม</h3>
+                    <label>สถานะของผู้ใช้งาน:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="user_status" value="tu_member" required> บุคลากร/นักศึกษาในมหาวิทยาลัยธรรมศาสตร์</label>
+                        <label><input type="radio" name="user_status" value="visitor"> บุคคลภายนอก</label>
+                    </div>
+                </div>
+
+                <!-- ส่วนที่ 1 -->
+                <div class="eval-section">
+                    <h3>ส่วนที่ 1: การใช้งานเว็บไซต์ (UI / UX)</h3>
+                    <label>1. ภาพรวมการใช้งานเว็บไซต์ (ความง่ายในการใช้งาน ความเร็ว และการออกแบบหน้าเว็บ):</label>
+                    <div class="rating-group">
+                        <label><input type="radio" name="ux_score" value="5" required> ดีมาก</label>
+                        <label><input type="radio" name="ux_score" value="4"> ดี</label>
+                        <label><input type="radio" name="ux_score" value="3"> ปานกลาง</label>
+                        <label><input type="radio" name="ux_score" value="2"> พอใช้</label>
+                        <label><input type="radio" name="ux_score" value="1"> ควรปรับปรุง</label>
+                    </div>
+                </div>
+
+                <!-- ส่วนที่ 2 -->
+                <div class="eval-section">
+                    <h3>ส่วนที่ 2: ความแม่นยำของการนำทาง</h3>
+                    <label>2. ความถูกต้อง ชัดเจน และแม่นยำของระบบนำทาง (การแสดงจุดเริ่มต้น จุดปลายทาง เส้นทาง สัญลักษณ์/สิ่งอำนวยความสะดวกต่าง ๆ):</label>
+                    <div class="rating-group">
+                        <label><input type="radio" name="accuracy_score" value="5"> แม่นยำมากที่สุด</label>
+                        <label><input type="radio" name="accuracy_score" value="4"> แม่นยำมาก</label>
+                        <label><input type="radio" name="accuracy_score" value="3"> แม่นยำปานกลาง</label>
+                        <label><input type="radio" name="accuracy_score" value="2"> แม่นยำน้อย</label>
+                        <label><input type="radio" name="accuracy_score" value="1"> ต้องปรับปรุง</label>
+                    </div>
+                </div>
+
+                <!-- ส่วนที่ 3 (ช่องพิมพ์ข้อเสนอแนะ) -->
+                <div class="eval-section">
+                    <h3>ส่วนที่ 3: ข้อเสนอแนะเพิ่มเติม</h3>
+                    <label for="eval_comment">3. ข้อเสนอแนะ หรือจุดที่พบปัญหาเพิ่มเติม (ถ้ามี):</label>
+                    <textarea id="eval_comment" name="eval_comment" rows="3" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="พิมพ์ข้อเสนอแนะ หรือแจ้งจุดที่ปักหมุดผิดได้เลยครับ..."></textarea>
+                </div>
+
+                <button type="submit" class="eval-submit-btn">ส่งแบบประเมิน</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- [JavaScript] -->
+    <script>
+        // ==========================================================================
+        // 1. ขนาดพิกเซลจริงของรูปแต่ละชั้น (.jpg)
+        // ==========================================================================
+        const floorDimensions = {
+            1: { width: 776, height: 184 },
+            "M": { width: 768, height: 198 },
+            2: { width: 762, height: 194 },
+            3: { width: 778, height: 171 },
+            4: { width: 770, height: 185 }
+        };
+
+        // ==========================================================================
+        // 2. กำหนดพิกเซลจริง (px, py) ของห้องและจุดเชื่อมต่อ
+        // ==========================================================================
+        const nodes = {
+          // ชั้น 1
+          "106": { px: 431, py: 128, floor: 1, name: "ห้อง 106" },
+          "110": { px: 377, py: 101, floor: 1, name: "ห้อง 110" },
+          "111": { px: 408, py: 60, floor: 1, name: "ห้อง 111" },
+          "112": { px: 431, py: 88, floor: 1, name: "ห้อง 112" },
+          "113": { px: 430, py: 101, floor: 1, name: "ห้อง 113" },
+          "114": { px: 359, py: 48, floor: 1, name: "ห้อง 114" },
+          "115": { px: 311, py: 105, floor: 1, name: "ห้อง 115" },
+          "116": { px: 311, py: 118, floor: 1, name: "ห้อง 116" },
+          "118": { px: 243, py: 90, floor: 1, name: "ห้อง 118" },
+          "119": { px: 213, py: 92, floor: 1, name: "ห้อง 119" },
+          "120": { px: 259, py: 73, floor: 1, name: "ห้อง 120" },
+          "123": { px: 218, py: 73, floor: 1, name: "ห้อง 123" },
+          "124": { px: 326, py: 59, floor: 1, name: "ห้อง 124" },
+          "ห้องละหมาด": { px: 377, py: 61, floor: 1, name: "ห้องละหมาด" },
+          "Amazon": { px: 658, py: 93, floor: 1, name: "Amazon" },
+          "Restroom_1": { px: 270, py: 120, floor: 1, name: "ห้องน้ำ 1 (ชั้น 1)" },
+          "Restroom_2": { px: 430, py: 113, floor: 1, name: "ห้องน้ำ 2 (ชั้น 1)" },
+          "Restroom_3": { px: 637, py: 111, floor: 1, name: "ห้องน้ำ 3 (ชั้น 1)" },
+          "Restroom_4": { px: 661, py: 109, floor: 1, name: "ห้องน้ำ 4 (ชั้น 1)" },
+          "ลิฟต์_1": { px: 299, py: 132, floor: 1, name: "ลิฟต์ 1 (ชั้น 1)" },
+          "ลิฟต์_2": { px: 603, py: 53, floor: 1, name: "ลิฟต์ 2 (ชั้น 1)" },
+          "บันได_1": { px: 186, py: 99, floor: 1, name: "บันได_1" },
+          "บันได_2": { px: 289, py: 101, floor: 1, name: "บันได_2" },
+          "บันได_3": { px: 334, py: 67, floor: 1, name: "บันได_3" },
+          "บันได_4": { px: 456, py: 108, floor: 1, name: "บันได_4" },
+          "บันได_5": { px: 497, py: 82, floor: 1, name: "บันได_5" },
+          "บันได_6": { px: 579, py: 80, floor: 1, name: "บันได_6" },
+
+          // ชั้น M
+          "M04": { px: 424, py: 141, floor: "M", name: "ห้อง M04" },
+          "M05": { px: 378, py: 143, floor: "M", name: "ห้อง M05" },
+          "M06": { px: 376, py: 117, floor: "M", name: "ห้อง M06" },
+          "M07": { px: 414, py: 75, floor: "M", name: "ห้อง M07" },
+          "M08": { px: 389, py: 74, floor: "M", name: "ห้อง M08" },
+          "M09": { px: 368, py: 73, floor: "M", name: "ห้อง M09" },
+          "M10": { px: 344, py: 75, floor: "M", name: "ห้อง M10" },
+          "M11": { px: 322, py: 73, floor: "M", name: "ห้อง M11" },
+          "M12": { px: 356, py: 119, floor: "M", name: "ห้อง M12" },
+          "M13": { px: 356, py: 143, floor: "M", name: "ห้อง M13" },
+          "M14": { px: 310, py: 144, floor: "M", name: "ห้อง M14" },
+          "M115": { px: 309, py: 118, floor: "M", name: "ห้อง M115" },
+          "M16": { px: 241, py: 114, floor: "M", name: "ห้อง M16" },
+          "M17": { px: 209, py: 116, floor: "M", name: "ห้อง M17" },
+          "M18": { px: 257, py: 91, floor: "M", name: "ห้อง M18" },
+          "M19": { px: 208, py: 90, floor: "M", name: "ห้อง M19" },
+          "M20": { px: 176, py: 90, floor: "M", name: "ห้อง M20" },
+          "Restroom_5": { px: 268, py: 146, floor: "M", name: "ห้องน้ำ 5 (ชั้น M)" },
+          "Restroom_6": { px: 416, py: 114, floor: "M", name: "ห้องน้ำ 6 (ชั้น M)" },
+          "บันได_7": { px: 178, py: 117, floor: "M", name: "บันได_7" },
+          "บันได_8": { px: 286, py: 123, floor: "M", name: "บันได_8" },
+          "บันได_9": { px: 330, py: 87, floor: "M", name: "บันได_9" },
+          "บันได_10": { px: 379, py: 89, floor: "M", name: "บันได_10" },
+          "บันได_11": { px: 450, py: 128, floor: "M", name: "บันได_11" },
+          "บันได_12": { px: 484, py: 101, floor: "M", name: "บันได_12" },
+          "บันได_13": { px: 586, py: 104, floor: "M", name: "บันได_13" },
+          "บันได_14": { px: 713, py: 79, floor: "M", name: "บันได_14" },
+          "ลิฟต์_3": { px: 292, py: 152, floor: "M", name: "ลิฟต์ 1 (ชั้น M)" },
+          "ลิฟต์_4": { px: 604, py: 77, floor: "M", name: "ลิฟต์ 2 (ชั้น M)" },
+
+          // ชั้น 2
+          "201": { px: 697, py: 109, floor: 2, name: "ห้อง 201" },
+          "202": { px: 656, py: 109, floor: 2, name: "ห้อง 202" },
+          "204": { px: 689, py: 85, floor: 2, name: "ห้อง 204" },
+          "205": { px: 657, py: 84, floor: 2, name: "ห้อง 205" },
+          "207": { px: 577, py: 145, floor: 2, name: "ห้อง 207" },
+          "208": { px: 546, py: 148, floor: 2, name: "ห้อง 208" },
+          "209": { px: 522, py: 148, floor: 2, name: "ห้อง 209" },
+          "210": { px: 491, py: 144, floor: 2, name: "ห้อง 210" },
+          "211": { px: 465, py: 138, floor: 2, name: "ห้อง 211" },
+          "214": { px: 425, py: 137, floor: 2, name: "ห้อง 214" },
+          "215": { px: 380, py: 134, floor: 2, name: "ห้อง 215" },
+          "216": { px: 380, py: 108, floor: 2, name: "ห้อง 216" },
+          "217": { px: 415, py: 69, floor: 2, name: "ห้อง 217" },
+          "218": { px: 391, py: 68, floor: 2, name: "ห้อง 218" },
+          "219": { px: 366, py: 70, floor: 2, name: "ห้อง 219" },
+          "220": { px: 343, py: 70, floor: 2, name: "ห้อง 220" },
+          "221": { px: 321, py: 69, floor: 2, name: "ห้อง 221" },
+          "222": { px: 354, py: 108, floor: 2, name: "ห้อง 222" },
+          "223": { px: 355, py: 137, floor: 2, name: "ห้อง 223" },
+          "224": { px: 307, py: 137, floor: 2, name: "ห้อง 224" },
+          "225": { px: 307, py: 110, floor: 2, name: "ห้อง 225" },
+          "226": { px: 234, py: 108, floor: 2, name: "ห้อง 226" },
+          "227": { px: 198, py: 109, floor: 2, name: "ห้อง 227" },
+          "228": { px: 175, py: 108, floor: 2, name: "ห้อง 228" },
+          "229": { px: 249, py: 83, floor: 2, name: "ห้อง 229" },
+          "230": { px: 201, py: 84, floor: 2, name: "ห้อง 230" },
+          "231": { px: 177, py: 83, floor: 2, name: "ห้อง 231" },
+          "Restroom_7": { px: 265, py: 144, floor: 2, name: "ห้องน้ำ 7 (ชั้น 2)" },
+          "Restroom_8": { px: 413, py: 111, floor: 2, name: "ห้องน้ำ 8 (ชั้น 2)" },
+          "Restroom_9": { px: 606, py: 118, floor: 2, name: "ห้องน้ำ 9 (ชั้น 2)" },
+          "ลิฟต์_5": { px: 289, py: 144, floor: 2, name: "ลิฟต์ 1 (ชั้น 2)" },
+          "ลิฟต์_6": { px: 609, py: 74, floor: 2, name: "ลิฟต์ 2 (ชั้น 2)" },
+          "บันได_15": { px: 286, py: 118, floor: 2, name: "บันได_15" },
+          "บันได_16": { px: 283, py: 59, floor: 2, name: "บันได_16" },
+          "บันได_17": { px: 375, py: 84, floor: 2, name: "บันได_17" },
+          "บันได_18": { px: 407, py: 81, floor: 2, name: "บันได_18" },
+          "บันได_19": { px: 484, py: 95, floor: 2, name: "บันได_19" },
+          "บันได_20": { px: 583, py: 97, floor: 2, name: "บันได_20" },
+          "บันได_21": { px: 491, py: 110, floor: 2, name: "บันได_21" },
+          "บันได_22": { px: 545, py: 117, floor: 2, name: "บันได_22" },
+          "บันได_23": { px: 719, py: 69, floor: 2, name: "บันได_23" },
+
+          // ชั้น 3
+          "301": { px: 694, py: 93, floor: 3, name: "ห้อง 301" },
+          "302": { px: 680, py: 107, floor: 3, name: "ห้อง 302" },
+          "304": { px: 681, py: 67, floor: 3, name: "ห้อง 304" },
+          "307": { px: 589, py: 119, floor: 3, name: "ห้อง 307" },
+          "308": { px: 562, py: 121, floor: 3, name: "ห้อง 308" },
+          "309": { px: 537, py: 122, floor: 3, name: "ห้อง 309" },
+          "310": { px: 493, py: 115, floor: 3, name: "ห้อง 310" },
+          "312": { px: 437, py: 127, floor: 3, name: "ห้อง 312" },
+          "313": { px: 388, py: 128, floor: 3, name: "ห้อง 313" },
+          "314": { px: 388, py: 105, floor: 3, name: "ห้อง 314" },
+          "315": { px: 424, py: 52, floor: 3, name: "ห้อง 315" },
+          "316": { px: 398, py: 53, floor: 3, name: "ห้อง 316" },
+          "317": { px: 353, py: 52, floor: 3, name: "ห้อง 317" },
+          "318": { px: 328, py: 51, floor: 3, name: "ห้อง 318" },
+          "319": { px: 363, py: 103, floor: 3, name: "ห้อง 319" },
+          "320": { px: 365, py: 128, floor: 3, name: "ห้อง 320" },
+          "321": { px: 316, py: 128, floor: 3, name: "ห้อง 321" },
+          "322": { px: 314, py: 102, floor: 3, name: "ห้อง 322" },
+          "323": { px: 238, py: 94, floor: 3, name: "ห้อง 323" },
+          "324": { px: 204, py: 93, floor: 3, name: "ห้อง 324" },
+          "325": { px: 182, py: 93, floor: 3, name: "ห้อง 325" },
+          "326": { px: 258, py: 69, floor: 3, name: "ห้อง 326" },
+          "327": { px: 208, py: 68, floor: 3, name: "ห้อง 327" },
+          "328": { px: 173, py: 66, floor: 3, name: "ห้อง 328" },
+          "Restroom_10": { px: 271, py: 129, floor: 3, name: "ห้องน้ำ 10 (ชั้น 3)" },
+          "Restroom_11": { px: 429, py: 103, floor: 3, name: "ห้องน้ำ 11 (ชั้น 3)" },
+          "Restroom_12": { px: 627, py: 113, floor: 3, name: "ห้องน้ำ 12 (ชั้น 3)" },
+          "ลิฟต์_7": { px: 295, py: 128, floor: 3, name: "ลิฟต์ 1 (ชั้น 3)" },
+          "ลิฟต์_8": { px: 623, py: 46, floor: 3, name: "ลิฟต์ 2 (ชั้น 3)" },
+          "บันได_24": { px: 281, py: 100, floor: 3, name: "บันได_24" },
+          "บันได_25": { px: 294, py: 46, floor: 3, name: "บันได_25" },
+          "บันได_26": { px: 352, py: 73, floor: 3, name: "บันได_26" },
+          "บันได_27": { px: 414, py: 66, floor: 3, name: "บันได_27" },
+          "บันได_28": { px: 520, py: 97, floor: 3, name: "บันได_28" },
+          "บันได_29": { px: 519, py: 114, floor: 3, name: "บันได_29" },
+          "บันได_30": { px: 567, py: 101, floor: 3, name: "บันได_30" },
+          "บันได_31": { px: 608, py: 108, floor: 3, name: "บันได_31" },
+          "บันได_32": { px: 740, py: 51, floor: 3, name: "บันได_32" },
+
+          // ชั้น 4
+          "401": { px: 664, py: 122, floor: 4, name: "401" },
+          "402": { px: 661, py: 84, floor: 4, name: "402" },
+          "408": { px: 404, py: 113, floor: 4, name: "408" },
+          "409": { px: 345, py: 112, floor: 4, name: "409" },
+          "410": { px: 408, py: 75, floor: 4, name: "410" },
+          "411": { px: 331, py: 78, floor: 4, name: "411" },
+          "413": { px: 248, py: 96, floor: 4, name: "413" },
+          "Student Lounge": { px: 597, py: 103, floor: 4, name: "Student Lounge" },
+          "TU AI Center": { px: 568, py: 150, floor: 4, name: "TU AI Center" },
+          "Restroom_13": { px: 259, py: 52, floor: 4, name: "ห้องน้ำ 13 (ชั้น 4)" },
+          "Restroom_14": { px: 487, py: 150, floor: 4, name: "ห้องน้ำ 14 (ชั้น 4)" },
+          "Restroom_15": { px: 607, py: 140, floor: 4, name: "ห้องน้ำ 15 (ชั้น 4)" },
+          "ลิฟต์_9": { px: 289, py: 148, floor: 4, name: "ลิฟต์ 1 (ชั้น 4)" },
+          "ลิฟต์_10": { px: 617, py: 60, floor: 4, name: "ลิฟต์ 2 (ชั้น 4)" },
+          "บันได_33": { px: 294, py: 56, floor: 4, name: "บันได_33" },
+          "บันได_34": { px: 293, py: 111, floor: 4, name: "บันได_34" },
+          "บันได_35": { px: 335, py: 93, floor: 4, name: "บันได_35" },
+          "บันได_36": { px: 507, py: 126, floor: 4, name: "บันได_36" },
+          "บันได_37": { px: 597, py: 121, floor: 4, name: "บันได_37" }
+        };
+
+        // ==========================================================================
+        // 3. ระบบจับกลุ่มห้องและเลือกจุดเชื่อมต่อ (ลิฟต์/บันได) อัตโนมัติ
+        // ==========================================================================
+        function getTransitForRoom(roomName, startFloor, targetFloor, preference) {
+            let isElevator = (preference === 'elevator');
+            startFloor = String(startFloor);
+            targetFloor = String(targetFloor);
+
+            // --- กรณีออกจากชั้น 1 ---
+            if (startFloor === "1") {
+                let groupA = ["115", "116", "118", "119", "120", "123", "Restroom_1"];
+                let groupB = ["110", "114", "124", "ห้องละหมาด"];
+                let groupC = ["111", "112", "113", "106", "Restroom_2"];
+                let groupD = ["Restroom_3", "Restroom_4", "Amazon"];
+                
+                if (groupA.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_1", 
+                            target: targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "M") ? "บันได_8" :
+                                          (targetFloor === "2") ? "บันได_15" : 
+                                          (targetFloor === "3") ? "บันได_24" : "บันได_34";
+                        return { start: "บันได_2", target: targetStair };
+                    }
+                }
+
+                if (groupB.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_1", 
+                            target: targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "M") ? ["บันได_9"] :
+                                          (targetFloor === "2") ? ["บันได_9", "บันได_10", "บันได_17"] : 
+                                          (targetFloor === "3") ? ["บันได_9", "บันได_10", "บันได_17", "บันได_18", "บันได_27"] : 
+                                                                  ["บันได_9", "บันได_10", "บันได_17", "บันได_18", "บันได_27", "บันได_26", "บันได_35"];
+                        return { start: "บันได_3", target: targetStair };
+                    }
+                }
+
+                if (groupC.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_1", 
+                            target: targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "M") ? ["บันได_11"] :
+                                          (targetFloor === "2") ? ["บันได_11", "บันได_10", "บันได_17"] : 
+                                          (targetFloor === "3") ? ["บันได_11", "บันได_10", "บันได_17", "บันได_18", "บันได_27"] : 
+                                                                  ["บันได_11", "บันได_10", "บันได_17", "บันได_18", "บันได_27", "บันได_26", "บันได_35"];
+                        return { start: "บันได_4", target: targetStair };
+                    }
+                }
+
+                if (groupD.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_2", 
+                            target: targetFloor === "M" ? "ลิฟต์_4" : 
+                                    targetFloor === "2" ? "ลิฟต์_6" : 
+                                    targetFloor === "3" ? "ลิฟต์_8" : "ลิฟต์_10"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "M") ? ["บันได_11"] :
+                                          (targetFloor === "2") ? ["บันได_11", "บันได_10", "บันได_17"] : 
+                                          (targetFloor === "3") ? ["บันได_11", "บันได_10", "บันได_17", "บันได_18", "บันได_27"] : 
+                                                                  ["บันได_11", "บันได_10", "บันได_17", "บันได_18", "บันได_27", "บันได_26", "บันได_35"];
+                        return { start: "บันได_4", target: targetStair };
+                    }
+                }
+            }
+
+            // --- กรณีออกจากชั้น M ---
+            else if (startFloor === "M") {
+                let groupA = ["M14", "M15", "M16", "M17", "M18", "M19", "M20", "Restroom_5"];
+                let groupB = ["M05", "M06", "M08", "M09", "M10", "M11", "M12", "M13"];
+                let groupC = ["M04", "M07", "Restroom_6"];
+                
+                if (groupA.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_3", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "1") ? "บันได_2" :
+                                          (targetFloor === "2") ? "บันได_15" : 
+                                          (targetFloor === "3") ? "บันได_24" : "บันได_34";
+                        return { start: "บันได_8", target: targetStair };
+                    }
+                }
+
+                if (groupB.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_3", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "1") ? "บันได_9" : "บันได_10";
+                        let targetStair = (targetFloor === "1") ? ["บันได_3"] :
+                                          (targetFloor === "2") ? ["บันได_10", "บันได_17"] : 
+                                          (targetFloor === "3") ? ["บันได_10", "บันได_17", "บันได_18", "บันได_27"] : 
+                                                                  ["บันได_10", "บันได_17", "บันได_18", "บันได_27", "บันได_26", "บันได_35"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupC.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_4", 
+                            target: targetFloor === "1" ? "ลิฟต์_2" : 
+                                    targetFloor === "2" ? "ลิฟต์_6" : 
+                                    targetFloor === "3" ? "ลิฟต์_8" : "ลิฟต์_10"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "1") ? "บันได_11" : "บันได_10";
+                        let targetStair = (targetFloor === "1") ? ["บันได_4"] :
+                                          (targetFloor === "2") ? ["บันได_10", "บันได_17"] : 
+                                          (targetFloor === "3") ? ["บันได_10", "บันได_17", "บันได_18", "บันได_27"] : 
+                                                                  ["บันได_10", "บันได_17", "บันได_18", "บันได_27", "บันได_26", "บันได_35"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+            }
+
+            // --- กรณีออกจากชั้น 2 ---
+            else if (startFloor === "2") {
+                let groupA = ["224", "225", "226", "227", "228", "230", "231", "Restroom_7"];
+                let groupB = ["220", "221", "229"];
+                let groupC = ["214", "215", "216", "217", "218", "219", "222", "223", "Restroom_8"];
+                let groupD = ["209", "210", "211"];
+                let groupE = ["207", "208", "Restroom_9", "201", "202", "204", "205"];
+                
+                if (groupA.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_5", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "1") ? ["บันได_2", "บันได_8"] :
+                                          (targetFloor === "M") ? ["บันได_8"] : 
+                                          (targetFloor === "3") ? ["บันได_24"] : ["บันได_24", "บันได_34"];
+                        return { start: "บันได_15", target: targetStair };
+                    }
+                }
+
+                if (groupB.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_5", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "1") ? "บันได_15" : 
+                                         (targetFloor === "M") ? "บันได_15" : "บันได_16";
+                        let targetStair = (targetFloor === "1") ? ["บันได_3", "บันได_8"] :
+                                          (targetFloor === "M") ? ["บันได_8"] : 
+                                          (targetFloor === "3") ? ["บันได_25"] : ["บันได_25", "บันได_33"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupC.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_5", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "3" ? "ลิฟต์_7" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "1") ? "บันได_17" : 
+                                         (targetFloor === "M") ? "บันได_17" : "บันได_18";
+                        let targetStair = (targetFloor === "1") ? ["บันได_10", "บันได_9", "บันได_3"] :
+                                          (targetFloor === "M") ? ["บันได_10"] : 
+                                          (targetFloor === "3") ? ["บันได_27"] : ["บันได_27", "บันได_26", "บันได_35"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupD.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_6", 
+                            target: targetFloor === "1" ? "ลิฟต์_2" : 
+                                    targetFloor === "M" ? "ลิฟต์_4" : 
+                                    targetFloor === "3" ? "ลิฟต์_8" : "ลิฟต์_10"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "1") ? "บันได_20" : 
+                                         (targetFloor === "M") ? "บันได_17" : "บันได_21";
+                        let targetStair = (targetFloor === "1") ? ["บันได_6"] :
+                                          (targetFloor === "M") ? ["บันได_10"] : 
+                                          (targetFloor === "3") ? ["บันได_28"] : ["บันได_28", "บันได_29", "บันได_36"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupE.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_6", 
+                            target: targetFloor === "1" ? "ลิฟต์_2" : 
+                                    targetFloor === "M" ? "ลิฟต์_4" : 
+                                    targetFloor === "3" ? "ลิฟต์_8" : "ลิฟต์_10"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "1") ? "บันได_20" : 
+                                         (targetFloor === "M") ? "บันได_17" : "บันได_22";
+                        let targetStair = (targetFloor === "1") ? ["บันได_6"] :
+                                          (targetFloor === "M") ? ["บันได_10"] : 
+                                          (targetFloor === "3") ? ["บันได_30"] : ["บันได_30", "บันได_31", "บันได_37"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+            }
+
+            // --- กรณีออกจากชั้น 3 ---
+            else if (startFloor === "3") {
+                let groupA = ["318", "326", "321", "322", "323", "324", "325", "327", "328", "Restroom_10"];
+                let groupB = ["313", "314", "315", "316", "317", "319", "320"];
+                let groupC = ["309", "310", "312", "Restroom_11"];
+                let groupD = ["301", "302", "304", "307", "308", "Restroom_12"];
+                
+                if (groupA.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_7", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "4") ? "บันได_24" : "บันได_25";
+                        let targetStair = (targetFloor === "1") ? ["บันได_16", "บันได_15", "บันได_8", "บันได_2"] :
+                                          (targetFloor === "M") ? ["บันได_16", "บันได_15", "บันได_8"] : 
+                                          (targetFloor === "2") ? ["บันได_16"] : ["บันได_34"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupB.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_7", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : "ลิฟต์_9"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "4") ? "บันได_26" : "บันได_27";
+                        let targetStair = (targetFloor === "1") ? ["บันได_18", "บันได_17", "บันได_10", "บันได_9", "บันได_3"] :
+                                          (targetFloor === "M") ? ["บันได_18", "บันได_17", "บันได_10"] : 
+                                          (targetFloor === "2") ? ["บันได_18"] : ["บันได_35"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupC.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_8", 
+                            target: targetFloor === "1" ? "ลิฟต์_2" : 
+                                    targetFloor === "M" ? "ลิฟต์_4" : 
+                                    targetFloor === "2" ? "ลิฟต์_6" : "ลิฟต์_10"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "4") ? "บันได_29" : "บันได_30";
+                        let targetStair = (targetFloor === "1") ? ["บันได_22", "บันได_20", "บันได_6"] :
+                                          (targetFloor === "M") ? ["บันได_22", "บันได_17", "บันได_10"] : 
+                                          (targetFloor === "2") ? ["บันได_22"] : ["บันได_36"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+
+                if (groupD.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_8", 
+                            target: targetFloor === "1" ? "ลิฟต์_2" : 
+                                    targetFloor === "M" ? "ลิฟต์_4" : 
+                                    targetFloor === "2" ? "ลิฟต์_6" : "ลิฟต์_10"
+                        };
+                    } else {
+                        let startStair = (targetFloor === "4") ? "บันได_31" : "บันได_30";
+                        let targetStair = (targetFloor === "1") ? ["บันได_22", "บันได_20", "บันได_6"] :
+                                          (targetFloor === "M") ? ["บันได_22", "บันได_17", "บันได_10"] : 
+                                          (targetFloor === "2") ? ["บันได_22"] : ["บันได_37"];
+                        return { start: startStair, target: targetStair };
+                    }
+                }
+            }
+
+            // --- กรณีออกจากชั้น 4 ---
+            else if (startFloor === "4") {
+                let groupA = ["413", "Restroom_13"];
+                let groupB = ["408", "409", "410", "411"];
+                let groupC = ["401", "402", "Restroom_15", "Student Lounge", "Restroom_14", "TU AI Center"];
+                
+                if (groupA.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_9", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : "ลิฟต์_7"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "1") ? ["บันได_25", "บันได_16", "บันได_8", "บันได_2"] :
+                                          (targetFloor === "M") ? ["บันได_25", "บันได_16", "บันได_8"] : 
+                                          (targetFloor === "2") ? ["บันได_25", "บันได_16"] : ["บันได_25"];
+                        return { start: "บันได_33", target: targetStair };
+                    }
+                }
+
+                if (groupB.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_9", 
+                            target: targetFloor === "1" ? "ลิฟต์_1" : 
+                                    targetFloor === "M" ? "ลิฟต์_3" : 
+                                    targetFloor === "2" ? "ลิฟต์_5" : "ลิฟต์_7"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "1") ? ["บันได_26", "บันได_27", "บันได_18", "บันได_17", "บันได_10", "บันได_9", "บันได_3"] :
+                                          (targetFloor === "M") ? ["บันได_26", "บันได_27", "บันได_18", "บันได_17", "บันได_10"] : 
+                                          (targetFloor === "2") ? ["บันได_26", "บันได_27", "บันได_18"] : ["บันได_26"];
+                        return { start: "บันได_35", target: targetStair };
+                    }
+                }
+
+                if (groupC.includes(roomName)) {
+                    if (isElevator) {
+                        return { 
+                            start: "ลิฟต์_10", 
+                            target: targetFloor === "1" ? "ลิฟต์_2" : 
+                                    targetFloor === "M" ? "ลิฟต์_4" : 
+                                    targetFloor === "2" ? "ลิฟต์_6" : "ลิฟต์_8"
+                        };
+                    } else {
+                        let targetStair = (targetFloor === "1") ? ["บันได_29", "บันได_30", "บันได_22", "บันได_20", "บันได_6"] :
+                                          (targetFloor === "M") ? ["บันได_29", "บันได_30", "บันได_22", "บันได_17", "บันได_10"] : 
+                                          (targetFloor === "2") ? ["บันได_29", "บันได_30", "บันได_22"] : ["บันได_29"];
+                        return { start: "บันได_36", target: targetStair };
+                    }
+                }
+            }
+
+            // --- ค่ามาตรฐานประจำชั้น ---
+            let defaultStart = isElevator ? "ลิฟต์_1" : "บันได_2";
+            let defaultTarget = isElevator ? "ลิฟต์_3" : "บันได_8";
+            return { start: defaultStart, target: defaultTarget };
+        }
+
+        let currentResult = null;
+        let activeFloor = 1;
+
+        document.getElementById('navForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const start = document.getElementById('startRoom').value;
+            const target = document.getElementById('targetRoom').value;
+            const preference = document.querySelector('input[name="travelOption"]:checked').value;
+
+            if (start === target) {
+                alert('❌ กรุณาเลือกจุดเริ่มต้นและจุดปลายทางไม่ให้ซ้ำกันครับ');
+                return;
+            }
+
+            const startNode = nodes[start];
+            const targetNode = nodes[target];
+
+            let routeData;
+
+            // กรณีอยู่ชั้นเดียวกัน
+            if (startNode.floor === targetNode.floor) {
+                routeData = {
+                    path: [start, target],
+                    steps: [
+                        `เดินออกจาก ${startNode.name} ไปยัง ${targetNode.name} บนชั้น ${startNode.floor}`
+                    ]
+                };
+            } else {
+                // กรณีข้ามชั้น
+                let transitData = getTransitForRoom(start, startNode.floor, targetNode.floor, preference);
+                let startTransit = transitData.start;
+                let targetTransit = Array.isArray(transitData.target) ? transitData.target : [transitData.target];
+                
+                let actionText = (preference === 'elevator') ? 'ขึ้น/ลงลิฟต์' : 'เดินขึ้น/ลงบันได';
+
+                // รวมเส้นทางเดินทั้งหมด
+                let fullPath = [start, startTransit, ...targetTransit, target];
+
+                routeData = {
+                    path: fullPath,
+                    steps: [
+                        `เดินออกจาก ${startNode.name} ตรงไปยัง ${nodes[startTransit]?.name || startTransit} ชั้น ${startNode.floor}`,
+                        `${actionText} จากชั้น ${startNode.floor} ไปยังชั้น ${targetNode.floor}`,
+                        `เดินตรงไปยัง ${targetNode.name}`
+                    ]
+                };
+            }
+
+            currentResult = routeData;
+
+            const stepsListContainer = document.getElementById('stepsList');
+            stepsListContainer.innerHTML = '';
+            routeData.steps.forEach((desc, index) => {
+                stepsListContainer.innerHTML += `
+                    <div class="bg-slate-50 border-l-4 border-red-600 p-3.5 rounded-r-xl text-sm flex items-start gap-3">
+                        <span class="bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded text-xs shrink-0">สเต็ปที่ ${index + 1}</span>
+                        <p class="text-slate-700">${desc}</p>
+                    </div>
+                `;
+            });
+
+            // จัดเรียงชั้น (รวมชั้น M ด้วย)
+            const floorOrder = { 1: 1, "M": 2, 2: 3, 3: 4, 4: 5 };
+            const floorsInPath = [...new Set(routeData.path.map(n => nodes[n]?.floor || 1))].sort((a, b) => (floorOrder[a] || 0) - (floorOrder[b] || 0));
+            
+            activeFloor = floorsInPath[0];
+            
+            renderFloorTabs(floorsInPath);
+            renderMap(activeFloor);
+
+            document.getElementById('welcomeState').classList.add('hidden');
+            document.getElementById('resultState').classList.remove('hidden');
+        });
+
+        function renderFloorTabs(floors) {
+            const tabsContainer = document.getElementById('floorTabs');
+            tabsContainer.innerHTML = '';
+            floors.forEach(f => {
+                const isActive = String(f) === String(activeFloor);
+                tabsContainer.innerHTML += `
+                    <button onclick="switchFloor('${f}')" id="tabF${f}" class="px-4 py-2 text-sm font-medium rounded-lg ${isActive ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} transition">
+                        ชั้น ${f}
+                    </button>
+                `;
+            });
+        }
+
+        function switchFloor(f) {
+            activeFloor = isNaN(f) ? f : Number(f);
+            const floorOrder = { 1: 1, "M": 2, 2: 3, 3: 4, 4: 5 };
+            const floorsInPath = [...new Set(currentResult.path.map(n => nodes[n]?.floor || 1))].sort((a, b) => (floorOrder[a] || 0) - (floorOrder[b] || 0));
+            
+            floorsInPath.forEach(fl => {
+                const btn = document.getElementById(`tabF${fl}`);
+                if (btn) {
+                    btn.className = String(fl) === String(f) ? "px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white transition" : "px-4 py-2 text-sm font-medium rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition";
+                }
+            });
+            renderMap(activeFloor);
+        }
+
+        // ==========================================================================
+        // 4. ฟังก์ชันดึงรูป .jpg และแปลงพิกเซลจริงเป็น % อัตโนมัติ
+        // ==========================================================================
+        function renderMap(floorNum) {
+            const mapContainer = document.getElementById('mapContainer');
+            const floorNodes = currentResult.path.filter(n => nodes[n] && String(nodes[n].floor) === String(floorNum));
+            
+            let html = `
+                <img src="floor_${floorNum}.jpg" alt="ผังอาคารชั้น ${floorNum}" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'400\\'><rect width=\\'100%\\' height=\\'100%\\' fill=\\'%23f1f5f9\\'/><text x=\\'50%\\' y=\\'50%\\' font-size=\\'18\\' fill=\\'%2364748b\\' text-anchor=\\'middle\\'>แผนผังอาคาร SC3 - ชั้น ${floorNum} (วางไฟล์ floor_${floorNum}.jpg ในโฟลเดอร์เดียวกัน)</text></svg>';" class="map-bg">
+            `;
+
+            const dim = floorDimensions[floorNum] || { width: 800, height: 400 };
+
+            floorNodes.forEach((nodeKey) => {
+                const node = nodes[nodeKey];
+                const isStart = (nodeKey === currentResult.path[0]);
+                const isDestination = (nodeKey === currentResult.path[currentResult.path.length - 1]);
+                
+                let markerClass = "transit"; 
+                if (isStart) markerClass = ""; 
+                if (isDestination) markerClass = "destination"; 
+
+                const percentX = (node.px / dim.width) * 100;
+                const percentY = (node.py / dim.height) * 100;
+
+                html += `
+                    <div class="map-marker ${markerClass}" style="top: ${percentY}%; left: ${percentX}%;" title="${node.name}"></div>
+                `;
+            });
+
+            mapContainer.innerHTML = html;
+        }
+
+        // ==========================================================================
+        // 5. ระบบควบคุมแบบประเมิน (Modal)
+        // ==========================================================================
+        const openEvalBtn = document.getElementById('openEvalBtn');
+        const evalModal = document.getElementById('evalModal');
+        const closeEvalBtn = document.getElementById('closeEvalBtn');
+        const sc3EvalForm = document.getElementById('sc3EvalForm');
+
+        if (openEvalBtn) {
+            openEvalBtn.addEventListener('click', () => { 
+                evalModal.style.display = 'flex'; 
+            });
+            closeEvalBtn.addEventListener('click', () => { 
+                evalModal.style.display = 'none'; 
+            });
+            window.addEventListener('click', (e) => { 
+                if (e.target === evalModal) evalModal.style.display = 'none'; 
+            });
+
+            sc3EvalForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const submitBtn = sc3EvalForm.querySelector('.eval-submit-btn');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'กำลังส่งข้อมูล...';
+                }
+
+                const formData = {
+                    user_status: sc3EvalForm.user_status ? sc3EvalForm.user_status.value : '',
+                    ux_score: sc3EvalForm.ux_score.value,
+                    accuracy_score: sc3EvalForm.accuracy_score.value,
+                    eval_comment: document.getElementById('eval_comment').value
+                };
+
+                // === เอาลิงก์ Web App URL ที่ได้จากไอแพดมาวางตรงเครื่องหมายคำพูดนี้ ===
+                const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzf4PKCuFWocOiNVd00W2nQTvIrVFWgQ0V5_IriyyKxW1m06wrT2aTyd4t2ubU-yDb/exec';
+
+                fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                })
+                .then(() => {
+                    alert('✨ ขอบคุณสำหรับความคิดเห็น! ระบบได้บันทึกแบบประเมินเรียบร้อยแล้วครับ');
+                    sc3EvalForm.reset();
+                    if (evalModal) evalModal.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('❌ เกิดข้อผิดพลาดในการส่งข้อมูล');
+                })
+                .finally(() => {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'ส่งแบบประเมิน';
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
